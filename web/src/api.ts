@@ -1,0 +1,120 @@
+export type Ingredient = {
+  id?: number;
+  raw_text: string;
+  group_label: string | null;
+  quantity?: number | null;
+  quantity_max?: number | null;
+  unit?: string | null;
+  name?: string | null;
+  note?: string | null;
+};
+
+export type Step = { id?: number; text: string; photo_id: number | null; timer_minutes?: number | null };
+
+export type Recipe = {
+  id: number;
+  title: string;
+  source_person: string | null;
+  recipe_yield: string | null;
+  servings: number | null;
+  prep_minutes: number | null;
+  cook_minutes: number | null;
+  category: string | null;
+  tags: string[];
+  story: string | null;
+  story_year: string | null;
+  notes: string | null;
+  hero_photo_id: number | null;
+  card_photo_id: number | null;
+  ingredients: Ingredient[];
+  steps: Step[];
+  created_by_name?: string | null;
+  updated_at?: string;
+};
+
+export type RecipeSummary = Pick<Recipe, "id" | "title" | "source_person" | "category" | "tags" | "hero_photo_id"> & {
+  updated_at: string;
+};
+
+export type Template = { id?: number; group: string; text: string; custom: boolean };
+
+export type Me = {
+  user: { id: number; display_name: string; email: string; household_id: number };
+  household: {
+    id: number;
+    name: string;
+    plan: "free" | "premium";
+    join_code: string;
+    members: { id: number; display_name: string; email: string }[];
+  };
+};
+
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+  const init: RequestInit = { method, credentials: "same-origin", headers: {} };
+  if (body instanceof FormData) {
+    init.body = body;
+  } else if (body !== undefined) {
+    init.body = JSON.stringify(body);
+    (init.headers as Record<string, string>)["Content-Type"] = "application/json";
+  }
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch {
+    throw new ApiError(0, "Can't reach Recipe Keeper. Check your internet connection.");
+  }
+  if (!res.ok) {
+    let message = `Something went wrong (${res.status}).`;
+    try {
+      const data = await res.json();
+      if (typeof data.detail === "string") message = data.detail;
+      else if (Array.isArray(data.detail)) message = "Please check the highlighted fields.";
+    } catch {
+      /* not JSON */
+    }
+    throw new ApiError(res.status, message);
+  }
+  return res.json() as Promise<T>;
+}
+
+export const api = {
+  me: () => request<Me>("GET", "/api/me"),
+  login: (email: string, password: string) => request("POST", "/api/auth/login", { email, password }),
+  signup: (body: { email: string; password: string; display_name: string; household_name?: string; join_code?: string }) =>
+    request("POST", "/api/auth/signup", body),
+  logout: () => request("POST", "/api/auth/logout"),
+  listRecipes: (q?: string, category?: string) => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (category) params.set("category", category);
+    return request<{ recipes: RecipeSummary[]; categories: string[] }>("GET", `/api/recipes?${params}`);
+  },
+  getRecipe: (id: number) => request<Recipe>("GET", `/api/recipes/${id}`),
+  createRecipe: (r: RecipeInput) => request<Recipe>("POST", "/api/recipes", r),
+  updateRecipe: (id: number, r: RecipeInput) => request<Recipe>("PUT", `/api/recipes/${id}`, r),
+  deleteRecipe: (id: number) => request("DELETE", `/api/recipes/${id}`),
+  parseIngredients: (text: string) => request<{ lines: Ingredient[] }>("POST", "/api/ingredients/parse", { text }),
+  templates: () => request<{ templates: Template[]; slots: Record<string, string[]> }>("GET", "/api/templates"),
+  addTemplate: (text: string) => request<{ id: number }>("POST", "/api/templates", { text }),
+  deleteTemplate: (id: number) => request("DELETE", `/api/templates/${id}`),
+  uploadPhoto: async (file: Blob) => {
+    const form = new FormData();
+    form.append("file", file, "photo.jpg");
+    return request<{ id: number }>("POST", "/api/photos", form);
+  },
+};
+
+export type RecipeInput = Omit<Recipe, "id" | "ingredients" | "steps" | "created_by_name" | "updated_at"> & {
+  ingredients: { raw_text: string; group_label: string | null }[];
+  steps: { text: string; photo_id: number | null }[];
+};
+
+export const photoUrl = (id: number) => `/api/photos/${id}`;

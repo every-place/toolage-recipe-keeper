@@ -1,0 +1,14 @@
+{
+  "name": "Recipe Keeper by Toolage",
+  "short_name": "Recipes",
+  "description": "Your family's recipe box, on your phone and tablet.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fbf7ef",
+  "theme_color": "#b5432f",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
