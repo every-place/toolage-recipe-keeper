@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api, photoUrl, type Recipe } from "../api";
+import { api, menuApi, photoUrl, type MenuSummary, type Recipe } from "../api";
 import { scaleLine } from "../quantity";
 import NutritionPanel from "../components/NutritionPanel";
 
@@ -19,6 +19,14 @@ export default function RecipeView() {
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [error, setError] = useState("");
   const [scale, setScale] = useState(1);
+  const [menus, setMenus] = useState<MenuSummary[] | null>(null);
+  const [added, setAdded] = useState("");
+
+  useEffect(() => {
+    if (!added) return;
+    const t = setTimeout(() => setAdded(""), 4000);
+    return () => clearTimeout(t);
+  }, [added]);
 
   useEffect(() => {
     api.getRecipe(Number(id)).then(setRecipe).catch((e) => setError(e.message));
@@ -63,6 +71,7 @@ export default function RecipeView() {
 
         <div className="actions">
           {recipe.steps.length > 0 && <Link to={`/r/${recipe.id}/cook`} className="btn primary">▶ Start cooking</Link>}
+          <button className="btn" onClick={() => menuApi.list().then((d) => setMenus(d.menus))}>🛒 Add to menu</button>
           <button className="btn" onClick={() => window.print()}>Print card</button>
           <a className="btn" href={`/api/recipes/${recipe.id}/schema.json`} download={`${recipe.title}.json`}>Export</a>
         </div>
@@ -126,6 +135,47 @@ export default function RecipeView() {
           <div className="card no-print">
             <h3 className="section-title">The original card</h3>
             <img className="card-photo" src={photoUrl(recipe.card_photo_id)} alt="The original handwritten recipe card" />
+          </div>
+        )}
+        {menus && (
+          <div className="sheet" onClick={() => setMenus(null)}>
+            <div onClick={(e) => e.stopPropagation()}>
+              <h3 className="section-title">Add to which menu?</h3>
+              <ul className="list-plain">
+                {menus.map((m) => (
+                  <li key={m.id}>
+                    <button
+                      className="btn quiet"
+                      style={{ flex: 1, justifyContent: "flex-start" }}
+                      onClick={async () => {
+                        await menuApi.setRecipe(m.id, recipe.id, scale);
+                        setMenus(null);
+                        setAdded(m.name);
+                      }}
+                    >
+                      {m.name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <button
+                className="btn primary"
+                style={{ marginTop: 12, width: "100%" }}
+                onClick={async () => {
+                  const m = await menuApi.create("This week");
+                  await menuApi.setRecipe(m.id, recipe.id, scale);
+                  setMenus(null);
+                  setAdded(m.name);
+                }}
+              >
+                ＋ New menu “This week”
+              </button>
+            </div>
+          </div>
+        )}
+        {added && (
+          <div className="toast" onClick={() => navigate("/menus")}>
+            Added to {added} · <u>Open menus</u>
           </div>
         )}
         <p className="hint no-print">

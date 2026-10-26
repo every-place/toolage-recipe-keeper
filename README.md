@@ -8,6 +8,7 @@ A digital recipe box for families. Log Grandma's handwritten cards, your own cre
 - **Card editor**: type ingredients the way you'd write them (`1/2 cup flour, sifted`) and the app reads the amount, unit, ingredient and note. Steps offer sentence templates as you type ("Bake at ___ for ___, or until ___"), with tap-to-fill blanks. Photos of the finished dish, each step, and the original handwritten card. A place for the story behind the recipe. Unsaved work is kept on the device.
 - **Recipe card**: scale the batch (½×, 2×, 3×), print it as a card, or export it.
 - **Cooking mode**: big text, one step at a time, the screen stays awake, built-in timers, and an ingredient checklist.
+- **Menus and shopping lists**: add recipes to a menu ("This week", "Christmas baking") with a batch size, and get one combined list grouped by store aisle ("2 cups + 3 tbsp butter", "8 eggs"). Tick off what's already in the kitchen, star the things you usually have so they start ticked, then tick items into the cart. The family sees the same list. Send it by text, email or the phone's share sheet.
 - **Family sharing**: one recipe box per household. Family members join with a code from Settings.
 - **Your data**: export every recipe in the schema.org Recipe format, which most recipe apps can import.
 - **Nutrition (Premium)**: calories, fat, carbs, sugar, fiber, protein and sodium per serving or for the whole recipe, from [FatSecret](https://www.fatsecret.com). Each ingredient is matched to a FatSecret food once per household and remembered; tap "Change" to pick a different food or leave one out. Cooking effects are ignored.
@@ -75,6 +76,7 @@ GitHub Actions runs both on every pull request.
 | `recipekeeper/fatsecret.py` | FatSecret client (same as Vitality's) |
 | `recipekeeper/nutrition.py` | Converts ingredient amounts into FatSecret servings and adds up the totals |
 | `recipekeeper/nutrition_service.py` | Matching ingredients to foods, with caching so each food is fetched once |
+| `recipekeeper/shopping.py` | Combines a menu's ingredients into one list, by aisle |
 | `scripts/` | `set_plan` (free/premium by hand) and `check_fatsecret` (live API check) |
 | `recipekeeper/schema_org.py` | Export in the schema.org Recipe format |
 | `recipekeeper/photos.py` | Photo uploads: fix rotation, shrink, save as JPEG |

@@ -157,4 +157,41 @@ export const nutritionApi = {
     request("PUT", "/api/nutrition/match", { name, food_id, skip }),
 };
 
+export type MenuSummary = { id: number; name: string; created_at: string; recipe_count: number };
+export type Menu = {
+  id: number;
+  name: string;
+  recipes: { recipe_id: number; multiplier: number; title: string; hero_photo_id: number | null }[];
+};
+export type ShopItem = {
+  key: string;
+  name: string;
+  amount: string;
+  recipes: string[];
+  aisle: string;
+  state: "need" | "got" | "have";
+  staple: boolean;
+};
+export type Shopping = {
+  aisles: { aisle: string; items: ShopItem[] }[];
+  counts: { need: number; got: number; have: number };
+  text: string;
+  menu: { id: number; name: string };
+};
+
+export const menuApi = {
+  list: () => request<{ menus: MenuSummary[] }>("GET", "/api/menus"),
+  create: (name: string) => request<Menu>("POST", "/api/menus", { name }),
+  get: (id: number) => request<Menu>("GET", `/api/menus/${id}`),
+  rename: (id: number, name: string) => request<Menu>("PATCH", `/api/menus/${id}`, { name }),
+  remove: (id: number) => request("DELETE", `/api/menus/${id}`),
+  setRecipe: (id: number, recipeId: number, multiplier: number) =>
+    request<Menu>("PUT", `/api/menus/${id}/recipes/${recipeId}`, { multiplier }),
+  shopping: (id: number) => request<Shopping>("GET", `/api/menus/${id}/shopping`),
+  check: (id: number, key: string, state: ShopItem["state"] | null) =>
+    request<Shopping>("PUT", `/api/menus/${id}/shopping`, { key, state }),
+  reset: (id: number) => request<Shopping>("POST", `/api/menus/${id}/shopping/reset`),
+  staple: (name: string, on: boolean) => request<{ staples: string[] }>("PUT", "/api/staples", { name, on }),
+};
+
 export const photoUrl = (id: number) => `/api/photos/${id}`;
