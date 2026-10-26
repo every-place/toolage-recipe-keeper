@@ -1,0 +1,23 @@
+# Render Blueprint: Render dashboard -> New -> Blueprint -> pick this repo.
+# Render asks for each "sync: false" value when you create it.
+services:
+  - type: web
+    name: recipe-keeper
+    runtime: docker
+    plan: free
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL        # Neon connection string
+        sync: false
+      - key: PREMIUM_EMAILS      # your email(s), comma separated, until billing exists
+        sync: false
+      - key: FATSECRET_CLIENT_ID
+        sync: false
+      - key: FATSECRET_CLIENT_SECRET
+        sync: false
+      - key: FATSECRET_PROXY_URL # same value as Vitality uses
+        sync: false

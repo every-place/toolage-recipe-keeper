@@ -36,6 +36,13 @@ def data_dir() -> Path:
     return path
 
 
+def premium_emails() -> set[str]:
+    """PREMIUM_EMAILS: comma-separated emails whose households get Premium
+    when they sign up or log in. Stands in for billing until billing exists."""
+    raw = get("PREMIUM_EMAILS") or ""
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
 # ---------- FatSecret (nutrition, premium plan) ----------
 def fatsecret_configured() -> bool:
     return bool(get("FATSECRET_CLIENT_ID") and get("FATSECRET_CLIENT_SECRET"))

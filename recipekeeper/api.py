@@ -47,6 +47,11 @@ def current_user(request: Request, conn: Connection = Depends(get_conn)) -> Curr
                        display_name=user["display_name"], email=user["email"])
 
 
+def _grant_listed_premium(conn: Connection, email: str, household_id: int) -> None:
+    if email.strip().lower() in config.premium_emails():
+        repo.set_plan(conn, household_id, "premium")
+
+
 def _set_login(response: Response, user_id: int) -> None:
     response.set_cookie(
         auth.COOKIE_NAME, auth.make_session(user_id), max_age=auth.SESSION_MAX_AGE,
@@ -91,6 +96,7 @@ def signup(body: SignupIn, response: Response, conn: Connection = Depends(get_co
         name = (body.household_name or "").strip() or f"{body.display_name.strip()}'s kitchen"
         household_id = repo.create_household(conn, name)
     user_id = repo.create_user(conn, household_id, body.email, body.display_name, body.password)
+    _grant_listed_premium(conn, body.email, household_id)
     _set_login(response, user_id)
     return {"ok": True}
 
@@ -100,6 +106,7 @@ def login(body: LoginIn, response: Response, conn: Connection = Depends(get_conn
     user = repo.user_by_email(conn, body.email)
     if user is None or not auth.verify_password(body.password, user["password_hash"]):
         raise HTTPException(401, "That email and password don't match.")
+    _grant_listed_premium(conn, user["email"], user["household_id"])
     _set_login(response, user["id"])
     return {"ok": True}
 
