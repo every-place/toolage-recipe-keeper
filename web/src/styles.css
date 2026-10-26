@@ -299,3 +299,15 @@ details.more summary { cursor: pointer; font-weight: 600; color: var(--ink-soft)
   .two-col { grid-template-columns: 2fr 3fr; }
   .steps img { max-width: 2in; }
 }
+
+/* ---------- nutrition ---------- */
+.nutrition .label { border: 2px solid var(--ink); border-radius: 8px; padding: 10px 14px; max-width: 360px; }
+.nutrition .label-cal { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 6px solid var(--ink); padding-bottom: 4px; margin-bottom: 4px; font-weight: 700; font-size: 20px; }
+.nutrition .label-cal b { font-size: 32px; font-family: var(--serif); }
+.nutrition .label-row { display: flex; justify-content: space-between; border-bottom: 1px solid var(--line); padding: 4px 0; }
+.nutrition.upsell { border: 1px dashed var(--sage); background: var(--sage-soft); box-shadow: none; }
+.match-chip { font-size: 13px; color: var(--sage); }
+.match-chip.unmatched, .match-chip.no_conversion { color: var(--accent); }
+.match-chip.skipped, .match-chip.no_amount { color: var(--ink-soft); }
+.match-editor { padding: 10px 0 4px; }
+.food-choice { display: flex; flex-direction: column; align-items: flex-start; text-align: left; width: 100%; border: none; background: transparent; padding: 6px 0; cursor: pointer; min-height: 44px; }

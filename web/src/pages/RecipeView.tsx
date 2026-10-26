@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, photoUrl, type Recipe } from "../api";
 import { scaleLine } from "../quantity";
+import NutritionPanel from "../components/NutritionPanel";
 
 const SCALES = [0.5, 1, 2, 3];
 
@@ -112,6 +113,8 @@ export default function RecipeView() {
             {recipe.steps.length === 0 && <p className="hint">No steps yet.</p>}
           </div>
         </div>
+
+        {recipe.ingredients.length > 0 && <NutritionPanel recipeId={recipe.id} />}
 
         {recipe.notes && (
           <div className="card">

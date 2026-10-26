@@ -1,4 +1,5 @@
 import io
+import pytest
 
 from PIL import Image
 
@@ -143,3 +144,110 @@ def test_export(client):
     client.post("/api/recipes", json=RECIPE)
     r = client.get("/api/export")
     assert r.json()[0]["name"] == "Grandma's sugar cookies"
+
+
+# ---------- nutrition ----------
+class FakeFatSecret:
+    def __init__(self):
+        self.calls = []
+        self.foods = {
+            "1": {"food_id": "1", "name": "Egg", "brand": None,
+                  "servings": [{"description": "1 large", "metric_amount": 50.0, "metric_unit": "g",
+                                "calories": 72.0, "protein_g": 6.3, "carbs_g": 0.4, "fat_g": 4.8}]},
+            "2": {"food_id": "2", "name": "White Flour", "brand": None,
+                  "servings": [{"description": "1 cup", "metric_amount": 125.0, "metric_unit": "g",
+                                "calories": 455.0, "protein_g": 12.9, "carbs_g": 95.4, "fat_g": 1.2}]},
+            "3": {"food_id": "3", "name": "Powdered Sugar", "brand": None,
+                  "servings": [{"description": "1 cup", "metric_amount": 120.0, "metric_unit": "g",
+                                "calories": 467.0, "carbs_g": 120.0}]},
+            "4": {"food_id": "4", "name": "Butter", "brand": None,
+                  "servings": [{"description": "1 tbsp", "metric_amount": 14.2, "metric_unit": "g",
+                                "calories": 102.0, "fat_g": 11.5}]},
+        }
+
+    def search_foods(self, query, max_results=20, page=0):
+        self.calls.append(("search", query))
+        by_word = {"eggs": "1", "flour": "2", "powdered sugar": "3", "butter": "4"}
+        fid = by_word.get(query)
+        return [{"food_id": fid, "name": self.foods[fid]["name"], "brand": None, "summary": ""}] if fid else []
+
+    def get_food(self, food_id):
+        self.calls.append(("get", food_id))
+        return self.foods[food_id]
+
+
+def _premium(client, monkeypatch):
+    from recipekeeper import nutrition_service, repository
+    from recipekeeper.db import get_engine
+    monkeypatch.setenv("FATSECRET_CLIENT_ID", "id")
+    monkeypatch.setenv("FATSECRET_CLIENT_SECRET", "secret")
+    fake = FakeFatSecret()
+    nutrition_service.set_client(fake)
+    hid = client.get("/api/me").json()["household"]["id"]
+    with get_engine().begin() as conn:
+        repository.set_plan(conn, hid, "premium")
+    return fake
+
+
+def test_nutrition_is_premium_only(client, monkeypatch):
+    signup(client)
+    rid = client.post("/api/recipes", json=RECIPE).json()["id"]
+    r = client.get(f"/api/recipes/{rid}/nutrition")
+    assert r.status_code == 402
+    assert "Premium" in r.json()["detail"]
+
+
+def test_nutrition_match_and_choose(client, monkeypatch):
+    signup(client)
+    fake = _premium(client, monkeypatch)
+    rid = client.post("/api/recipes", json=dict(RECIPE, servings=4)).json()["id"]
+
+    before = client.get(f"/api/recipes/{rid}/nutrition").json()
+    assert before["counted"] == 0 and fake.calls == []  # reading never calls FatSecret
+
+    out = client.post(f"/api/recipes/{rid}/nutrition/match").json()
+    assert out["counted"] == 3  # eggs, flour, powdered sugar
+    assert out["total"]["calories"] == pytest.approx(3 * 72 + 455 / 2 + 467)
+    assert out["per_serving"]["calories"] == pytest.approx(out["total"]["calories"] / 4)
+
+    # Matching again costs no API calls: everything is remembered
+    n = len(fake.calls)
+    client.post(f"/api/recipes/{rid}/nutrition/match")
+    assert len(fake.calls) == n
+
+    # Change "flour" to butter (silly, but proves the choice sticks), then skip eggs
+    assert client.put("/api/nutrition/match", json={"name": "flour", "food_id": "4"}).status_code == 200
+    assert client.put("/api/nutrition/match", json={"name": "eggs", "skip": True}).status_code == 200
+    lines = {ln["name"]: ln for ln in client.get(f"/api/recipes/{rid}/nutrition").json()["lines"]}
+    assert lines["flour"]["food_name"] == "Butter"
+    assert lines["eggs"]["status"] == "skipped"
+
+    assert client.get("/api/nutrition/search", params={"q": "butter"}).json()["results"][0]["name"] == "Butter"
+
+
+def test_nutrition_service_down(client, monkeypatch):
+    from recipekeeper.fatsecret import FatSecretError
+    signup(client)
+    fake = _premium(client, monkeypatch)
+
+    def boom(*a, **k):
+        raise FatSecretError("Invalid IP address")
+    fake.search_foods = boom
+    rid = client.post("/api/recipes", json=RECIPE).json()["id"]
+    r = client.post(f"/api/recipes/{rid}/nutrition/match")
+    assert r.status_code == 502
+
+
+def test_me_reports_plan(client, monkeypatch):
+    signup(client)
+    _premium(client, monkeypatch)
+    assert client.get("/api/me").json()["household"]["plan"] == "premium"
+
+
+def test_lines_without_amount_cost_no_calls(client, monkeypatch):
+    signup(client)
+    fake = _premium(client, monkeypatch)
+    rid = client.post("/api/recipes", json=dict(RECIPE, ingredients=[{"raw_text": "salt to taste"}])).json()["id"]
+    out = client.post(f"/api/recipes/{rid}/nutrition/match").json()
+    assert fake.calls == []
+    assert out["lines"][0]["status"] == "no_amount" and out["needs_attention"] == 0

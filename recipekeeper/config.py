@@ -34,3 +34,24 @@ def data_dir() -> Path:
     path = Path(get("RECIPES_DATA_DIR") or ROOT / "data")
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+# ---------- FatSecret (nutrition, premium plan) ----------
+def fatsecret_configured() -> bool:
+    return bool(get("FATSECRET_CLIENT_ID") and get("FATSECRET_CLIENT_SECRET"))
+
+
+def fatsecret_credentials() -> tuple[str, str]:
+    cid, secret = get("FATSECRET_CLIENT_ID"), get("FATSECRET_CLIENT_SECRET")
+    if not cid or not secret:
+        raise RuntimeError("FATSECRET_CLIENT_ID and FATSECRET_CLIENT_SECRET are not set.")
+    return cid, secret
+
+
+def fatsecret_scope() -> str:
+    return get("FATSECRET_SCOPE", "basic")
+
+
+def fatsecret_proxy() -> str | None:
+    """Optional fixed-IP proxy: FatSecret only answers IP addresses listed in its dashboard."""
+    return get("FATSECRET_PROXY_URL")
