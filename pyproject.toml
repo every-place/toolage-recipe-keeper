@@ -1,0 +1,9 @@
+[project]
+name = "recipekeeper"
+version = "0.1.0"
+description = "Recipe Keeper by Toolage: a digital family recipe box"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
