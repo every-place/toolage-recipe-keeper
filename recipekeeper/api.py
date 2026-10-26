@@ -18,6 +18,8 @@ from .fatsecret import FatSecretError
 from .db import get_engine
 from .ingredients import parse_lines
 from .schema_org import to_schema_org
+from .shopping import as_text, build_list
+from .nutrition import ingredient_key
 from .steps import SLOT_SUGGESTIONS, template_list
 
 app = FastAPI(title="Recipe Keeper", docs_url="/api/docs", openapi_url="/api/openapi.json")
@@ -291,6 +293,102 @@ def set_match(body: MatchIn, user: CurrentUser = Depends(premium_user),
               conn: Connection = Depends(get_conn)):
     nutrition_service.choose(conn, user.household_id, body.name, body.food_id, body.skip)
     return {"ok": True}
+
+
+# ---------- menus and shopping lists ----------
+class MenuIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+@app.get("/api/menus")
+def list_menus(user: CurrentUser = Depends(current_user), conn: Connection = Depends(get_conn)):
+    return {"menus": repo.list_menus(conn, user.household_id)}
+
+
+@app.post("/api/menus")
+def create_menu(body: MenuIn, user: CurrentUser = Depends(current_user), conn: Connection = Depends(get_conn)):
+    menu_id = repo.create_menu(conn, user.household_id, body.name)
+    return repo.get_menu(conn, user.household_id, menu_id)
+
+
+@app.get("/api/menus/{menu_id}")
+def get_menu(menu_id: int, user: CurrentUser = Depends(current_user), conn: Connection = Depends(get_conn)):
+    return repo.get_menu(conn, user.household_id, menu_id)
+
+
+@app.patch("/api/menus/{menu_id}")
+def rename_menu(menu_id: int, body: MenuIn, user: CurrentUser = Depends(current_user),
+                conn: Connection = Depends(get_conn)):
+    repo.rename_menu(conn, user.household_id, menu_id, body.name)
+    return repo.get_menu(conn, user.household_id, menu_id)
+
+
+@app.delete("/api/menus/{menu_id}")
+def delete_menu(menu_id: int, user: CurrentUser = Depends(current_user), conn: Connection = Depends(get_conn)):
+    repo.delete_menu(conn, user.household_id, menu_id)
+    return {"ok": True}
+
+
+class MenuRecipeIn(BaseModel):
+    multiplier: float = Field(default=1.0, ge=0, le=50)
+
+
+@app.put("/api/menus/{menu_id}/recipes/{recipe_id}")
+def set_menu_recipe(menu_id: int, recipe_id: int, body: MenuRecipeIn,
+                    user: CurrentUser = Depends(current_user), conn: Connection = Depends(get_conn)):
+    repo.set_menu_recipe(conn, user.household_id, menu_id, recipe_id, body.multiplier)
+    return repo.get_menu(conn, user.household_id, menu_id)
+
+
+def _shopping(conn: Connection, household_id: int, menu_id: int) -> dict:
+    menu = repo.get_menu(conn, household_id, menu_id)
+    data = build_list(repo.menu_lines(conn, household_id, menu_id), repo.staples(conn, household_id),
+                      repo.checks(conn, menu_id))
+    data["text"] = as_text(data, menu["name"])
+    data["menu"] = {"id": menu["id"], "name": menu["name"]}
+    return data
+
+
+@app.get("/api/menus/{menu_id}/shopping")
+def shopping_list(menu_id: int, user: CurrentUser = Depends(current_user), conn: Connection = Depends(get_conn)):
+    return _shopping(conn, user.household_id, menu_id)
+
+
+class CheckIn(BaseModel):
+    key: str = Field(min_length=1, max_length=200)
+    state: str | None = None  # 'have' | 'got' | 'need' | None to reset
+
+
+@app.put("/api/menus/{menu_id}/shopping")
+def set_check(menu_id: int, body: CheckIn, user: CurrentUser = Depends(current_user),
+              conn: Connection = Depends(get_conn)):
+    repo.set_check(conn, user.household_id, menu_id, body.key, body.state)
+    return _shopping(conn, user.household_id, menu_id)
+
+
+@app.post("/api/menus/{menu_id}/shopping/reset")
+def reset_checks(menu_id: int, user: CurrentUser = Depends(current_user), conn: Connection = Depends(get_conn)):
+    repo.clear_checks(conn, user.household_id, menu_id)
+    return _shopping(conn, user.household_id, menu_id)
+
+
+class StapleIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    on: bool
+
+
+@app.put("/api/staples")
+def set_staple(body: StapleIn, user: CurrentUser = Depends(current_user), conn: Connection = Depends(get_conn)):
+    key = ingredient_key(body.name)
+    if not key:
+        raise HTTPException(400, "That item has no name.")
+    repo.set_staple(conn, user.household_id, key, body.on)
+    return {"staples": sorted(repo.staples(conn, user.household_id))}
+
+
+@app.get("/api/staples")
+def get_staples(user: CurrentUser = Depends(current_user), conn: Connection = Depends(get_conn)):
+    return {"staples": sorted(repo.staples(conn, user.household_id))}
 
 
 # ---------- photos ----------

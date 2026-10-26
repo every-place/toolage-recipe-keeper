@@ -9,6 +9,10 @@ from sqlalchemy.engine import Connection
 from . import auth
 from .ingredients import parse_ingredient
 from .models import (
+    menu_recipes,
+    menus,
+    pantry_staples,
+    shopping_checks,
     food_cache,
     ingredient_matches,
     households,
@@ -327,3 +331,116 @@ def save_match(conn: Connection, household_id: int, key: str, food_id: str | Non
         conn.execute(update(ingredient_matches).where(ingredient_matches.c.id == existing).values(**values))
     else:
         conn.execute(insert(ingredient_matches).values(household_id=household_id, ingredient_key=key, **values))
+
+
+# ---------- menus and shopping ----------
+def _own_menu(conn: Connection, household_id: int, menu_id: int):
+    row = conn.execute(select(menus).where(menus.c.id == menu_id, menus.c.household_id == household_id)
+                       ).mappings().first()
+    if row is None:
+        raise NotFound
+    return row
+
+
+def list_menus(conn: Connection, household_id: int) -> list[dict]:
+    rows = conn.execute(
+        select(menus.c.id, menus.c.name, menus.c.created_at, func.count(menu_recipes.c.id).label("recipe_count"))
+        .select_from(menus.outerjoin(menu_recipes, menu_recipes.c.menu_id == menus.c.id))
+        .where(menus.c.household_id == household_id)
+        .group_by(menus.c.id, menus.c.name, menus.c.created_at)
+        .order_by(menus.c.id.desc())
+    ).mappings()
+    return [dict(r) for r in rows]
+
+
+def create_menu(conn: Connection, household_id: int, name: str) -> int:
+    name = (name or "").strip()
+    if not name:
+        raise Invalid("Give the menu a name.")
+    return conn.execute(insert(menus).values(household_id=household_id, name=name[:120])).inserted_primary_key[0]
+
+
+def rename_menu(conn: Connection, household_id: int, menu_id: int, name: str) -> None:
+    _own_menu(conn, household_id, menu_id)
+    if not (name or "").strip():
+        raise Invalid("Give the menu a name.")
+    conn.execute(update(menus).where(menus.c.id == menu_id).values(name=name.strip()[:120]))
+
+
+def delete_menu(conn: Connection, household_id: int, menu_id: int) -> None:
+    _own_menu(conn, household_id, menu_id)
+    conn.execute(delete(menus).where(menus.c.id == menu_id))
+
+
+def get_menu(conn: Connection, household_id: int, menu_id: int) -> dict:
+    m = dict(_own_menu(conn, household_id, menu_id))
+    m["recipes"] = [dict(r) for r in conn.execute(
+        select(menu_recipes.c.recipe_id, menu_recipes.c.multiplier, recipes.c.title, recipes.c.hero_photo_id)
+        .join(recipes, recipes.c.id == menu_recipes.c.recipe_id)
+        .where(menu_recipes.c.menu_id == menu_id)
+        .order_by(menu_recipes.c.id)
+    ).mappings()]
+    return m
+
+
+def set_menu_recipe(conn: Connection, household_id: int, menu_id: int, recipe_id: int, multiplier: float) -> None:
+    """Add a recipe to a menu, or change its batch size. Multiplier 0 removes it."""
+    _own_menu(conn, household_id, menu_id)
+    _own_recipe(conn, household_id, recipe_id)
+    where = (menu_recipes.c.menu_id == menu_id) & (menu_recipes.c.recipe_id == recipe_id)
+    if multiplier <= 0:
+        conn.execute(delete(menu_recipes).where(where))
+        return
+    if conn.scalar(select(menu_recipes.c.id).where(where)):
+        conn.execute(update(menu_recipes).where(where).values(multiplier=multiplier))
+    else:
+        conn.execute(insert(menu_recipes).values(menu_id=menu_id, recipe_id=recipe_id, multiplier=multiplier))
+
+
+def menu_lines(conn: Connection, household_id: int, menu_id: int) -> list[dict]:
+    _own_menu(conn, household_id, menu_id)
+    rows = conn.execute(
+        select(recipe_ingredients.c.raw_text, recipe_ingredients.c.quantity, recipe_ingredients.c.unit,
+               recipe_ingredients.c.name, recipes.c.title.label("recipe_title"), menu_recipes.c.multiplier)
+        .join(recipes, recipes.c.id == recipe_ingredients.c.recipe_id)
+        .join(menu_recipes, menu_recipes.c.recipe_id == recipes.c.id)
+        .where(menu_recipes.c.menu_id == menu_id, recipes.c.household_id == household_id)
+        .order_by(menu_recipes.c.id, recipe_ingredients.c.position)
+    ).mappings()
+    return [dict(r) for r in rows]
+
+
+def staples(conn: Connection, household_id: int) -> set[str]:
+    return set(conn.scalars(select(pantry_staples.c.ingredient_key)
+                            .where(pantry_staples.c.household_id == household_id)))
+
+
+def set_staple(conn: Connection, household_id: int, key: str, on: bool) -> None:
+    where = (pantry_staples.c.household_id == household_id) & (pantry_staples.c.ingredient_key == key)
+    exists = conn.scalar(select(pantry_staples.c.id).where(where))
+    if on and not exists:
+        conn.execute(insert(pantry_staples).values(household_id=household_id, ingredient_key=key))
+    elif not on and exists:
+        conn.execute(delete(pantry_staples).where(where))
+
+
+def checks(conn: Connection, menu_id: int) -> dict[str, str]:
+    return {r["item_key"]: r["state"] for r in conn.execute(
+        select(shopping_checks.c.item_key, shopping_checks.c.state).where(shopping_checks.c.menu_id == menu_id)
+    ).mappings()}
+
+
+def set_check(conn: Connection, household_id: int, menu_id: int, key: str, state: str | None) -> None:
+    """state None clears it (back to the default: 'have' for staples, else 'need')."""
+    _own_menu(conn, household_id, menu_id)
+    where = (shopping_checks.c.menu_id == menu_id) & (shopping_checks.c.item_key == key)
+    conn.execute(delete(shopping_checks).where(where))
+    if state is not None:
+        if state not in ("have", "got", "need"):
+            raise Invalid("Unknown item state.")
+        conn.execute(insert(shopping_checks).values(menu_id=menu_id, item_key=key, state=state))
+
+
+def clear_checks(conn: Connection, household_id: int, menu_id: int) -> None:
+    _own_menu(conn, household_id, menu_id)
+    conn.execute(delete(shopping_checks).where(shopping_checks.c.menu_id == menu_id))

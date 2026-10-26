@@ -8,6 +8,8 @@ import RecipeView from "./pages/RecipeView";
 import Editor from "./pages/Editor";
 import CookMode from "./pages/CookMode";
 import Settings from "./pages/Settings";
+import Menus from "./pages/Menus";
+import MenuPage from "./pages/MenuPage";
 
 export default function App() {
   const [me, setMe] = useState<Me | null | undefined>(undefined);
@@ -47,6 +49,8 @@ export default function App() {
         <Route path="/r/:id/edit" element={<Editor />} />
         <Route path="/r/:id/cook" element={<CookMode />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/menus" element={<Menus />} />
+        <Route path="/menus/:id" element={<MenuPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </SessionContext.Provider>

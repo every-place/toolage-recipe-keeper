@@ -260,3 +260,45 @@ def test_premium_emails_get_premium(client, monkeypatch):
     client.post("/api/auth/logout")
     signup(client, email="someone@example.com", name="Someone")
     assert client.get("/api/me").json()["household"]["plan"] == "free"
+
+
+# ---------- menus and shopping ----------
+def test_menu_and_shopping_list(client):
+    signup(client)
+    r1 = client.post("/api/recipes", json=RECIPE).json()["id"]
+    r2 = client.post("/api/recipes", json=dict(RECIPE, title="Pancakes", ingredients=[
+        {"raw_text": "1 1/2 cups flour"}, {"raw_text": "2 eggs"}, {"raw_text": "salt to taste"}])).json()["id"]
+    menu = client.post("/api/menus", json={"name": "Christmas baking"}).json()
+    mid = menu["id"]
+    client.put(f"/api/menus/{mid}/recipes/{r1}", json={"multiplier": 2})
+    assert len(client.put(f"/api/menus/{mid}/recipes/{r2}", json={"multiplier": 1}).json()["recipes"]) == 2
+    assert client.get("/api/menus").json()["menus"][0]["recipe_count"] == 2
+
+    shop = client.get(f"/api/menus/{mid}/shopping").json()
+    it = {i["key"]: i for g in shop["aisles"] for i in g["items"]}
+    assert it["flour"]["amount"] == "2 1/2 cups"  # 1/2 cup x2 + 1 1/2 cups
+    assert it["eggs"]["amount"] == "8"  # 3 x2 + 2
+    assert "Christmas baking" in shop["text"]
+
+    client.put("/api/staples", json={"name": "Salt", "on": True})
+    shop = client.put(f"/api/menus/{mid}/shopping", json={"key": "eggs", "state": "got"}).json()
+    it = {i["key"]: i for g in shop["aisles"] for i in g["items"]}
+    assert it["salt"]["state"] == "have" and it["eggs"]["state"] == "got"
+    shop = client.post(f"/api/menus/{mid}/shopping/reset").json()
+    assert {i["key"]: i for g in shop["aisles"] for i in g["items"]}["eggs"]["state"] == "need"
+
+    client.put(f"/api/menus/{mid}/recipes/{r2}", json={"multiplier": 0})
+    assert [r["title"] for r in client.get(f"/api/menus/{mid}").json()["recipes"]] == [RECIPE["title"]]
+    assert client.delete(f"/api/menus/{mid}").status_code == 200
+
+
+def test_menus_are_private(client):
+    signup(client)
+    rid = client.post("/api/recipes", json=RECIPE).json()["id"]
+    mid = client.post("/api/menus", json={"name": "Mine"}).json()["id"]
+    client.post("/api/auth/logout")
+    signup(client, email="stranger@example.com", name="Stranger")
+    assert client.get(f"/api/menus/{mid}").status_code == 404
+    assert client.get(f"/api/menus/{mid}/shopping").status_code == 404
+    own = client.post("/api/menus", json={"name": "Theirs"}).json()["id"]
+    assert client.put(f"/api/menus/{own}/recipes/{rid}", json={"multiplier": 1}).status_code == 404

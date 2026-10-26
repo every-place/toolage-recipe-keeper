@@ -146,3 +146,36 @@ ingredient_matches = Table(
     Column("confirmed", Integer, nullable=False, default=0, server_default="0"),  # 1 = chosen by a person
     UniqueConstraint("household_id", "ingredient_key", name="uq_matches_household_key"),
 )
+
+# ---------- Menus and shopping lists ----------
+menus = Table(
+    "menus", metadata, _id(), _household_fk(),
+    Column("name", String(120), nullable=False),
+    Column("created_at", String(20), nullable=False, default=now_utc_text),
+)
+
+menu_recipes = Table(
+    "menu_recipes", metadata, _id(),
+    Column("menu_id", Integer, ForeignKey("menus.id", ondelete="CASCADE"), nullable=False, index=True),
+    Column("recipe_id", Integer, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False),
+    Column("multiplier", Float, nullable=False, default=1.0, server_default="1"),
+    UniqueConstraint("menu_id", "recipe_id", name="uq_menu_recipe"),
+)
+
+# Ingredients a household "usually has" (salt, baking soda): start checked off.
+pantry_staples = Table(
+    "pantry_staples", metadata, _id(), _household_fk(),
+    Column("ingredient_key", String(200), nullable=False),
+    UniqueConstraint("household_id", "ingredient_key", name="uq_staples_household_key"),
+)
+
+# A shopping-list item's state on one menu: 'have' (already in the kitchen),
+# 'got' (in the cart), or 'need' (overrides a pantry staple). Shared by the family.
+shopping_checks = Table(
+    "shopping_checks", metadata, _id(),
+    Column("menu_id", Integer, ForeignKey("menus.id", ondelete="CASCADE"), nullable=False, index=True),
+    Column("item_key", String(200), nullable=False),
+    Column("state", String(10), nullable=False),
+    CheckConstraint("state IN ('have','got','need')", name="ck_checks_state"),
+    UniqueConstraint("menu_id", "item_key", name="uq_checks_menu_item"),
+)

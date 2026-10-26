@@ -31,6 +31,7 @@ export default function RecipeBox() {
     <>
       <header className="topbar">
         <h1><span className="brand">Recipe Keeper</span></h1>
+        <Link to="/menus" className="btn small">🛒 Menus</Link>
         <Link to="/settings" className="icon-btn" aria-label="Settings">⚙︎</Link>
       </header>
       <main className="page">
