@@ -1,0 +1,15 @@
+# Data and keys never go into the repo
+data/
+*.db
+*.sqlite
+.env
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+node_modules/
+web/dist/
+.DS_Store
+.idea/
