@@ -39,12 +39,17 @@ While working on the app's screens, run `npm run dev` in `web/` as well and open
 
 ## Put it online
 
-The `Dockerfile` builds one container that serves the app and the API. Any host that runs containers works (Render, Railway, Fly.io, Google Cloud Run). Set these environment variables there:
+The `Dockerfile` builds one container that serves the app and the API. Any host that runs containers works (Render, Railway, Fly.io, Google Cloud Run).
+
+**On Render (set up already):** `render.yaml` describes the service. In the Render dashboard choose New → Blueprint, pick this repo, and fill in the values it asks for. `SECRET_KEY` is made for you. Use a Neon database for `DATABASE_URL`, because Render's free database is deleted after 30 days. Every merge to `main` redeploys. The free plan sleeps after 15 minutes idle, so the first visit after that takes about a minute.
+
+Set these environment variables on the host:
 
 | Name | Value |
 | --- | --- |
 | `SECRET_KEY` | A long random string. Changing it logs everyone out |
 | `DATABASE_URL` | Your Postgres connection string |
+| `PREMIUM_EMAILS` | Optional. Comma-separated emails whose households get Premium when they sign up or log in (until billing exists) |
 | `COOKIE_SECURE` | `1` (already set in the Dockerfile; the site must be on https) |
 | `FATSECRET_CLIENT_ID`, `FATSECRET_CLIENT_SECRET` | From platform.fatsecret.com → API Keys (OAuth 2.0) |
 | `FATSECRET_PROXY_URL` | Optional. See below |

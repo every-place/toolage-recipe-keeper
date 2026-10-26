@@ -251,3 +251,12 @@ def test_lines_without_amount_cost_no_calls(client, monkeypatch):
     out = client.post(f"/api/recipes/{rid}/nutrition/match").json()
     assert fake.calls == []
     assert out["lines"][0]["status"] == "no_amount" and out["needs_attention"] == 0
+
+
+def test_premium_emails_get_premium(client, monkeypatch):
+    monkeypatch.setenv("PREMIUM_EMAILS", "aaron@example.com, Kristen@Example.com")
+    signup(client)
+    assert client.get("/api/me").json()["household"]["plan"] == "premium"
+    client.post("/api/auth/logout")
+    signup(client, email="someone@example.com", name="Someone")
+    assert client.get("/api/me").json()["household"]["plan"] == "free"
