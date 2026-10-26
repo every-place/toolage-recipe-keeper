@@ -1,12 +1,16 @@
 """Every database read and write. Recipe queries are always filtered by household."""
 from __future__ import annotations
 
+import json
+
 from sqlalchemy import delete, func, insert, or_, select, update
 from sqlalchemy.engine import Connection
 
 from . import auth
 from .ingredients import parse_ingredient
 from .models import (
+    food_cache,
+    ingredient_matches,
     households,
     now_utc_text,
     photos,
@@ -270,3 +274,56 @@ def delete_template(conn: Connection, household_id: int, template_id: int) -> No
         step_templates.c.id == template_id, step_templates.c.household_id == household_id))
     if res.rowcount == 0:
         raise NotFound
+
+
+# ---------- plans ----------
+def set_plan(conn: Connection, household_id: int, plan: str) -> None:
+    if plan not in ("free", "premium"):
+        raise Invalid("Plan must be 'free' or 'premium'.")
+    conn.execute(update(households).where(households.c.id == household_id).values(plan=plan))
+
+
+def household_plan(conn: Connection, household_id: int) -> str:
+    return conn.scalar(select(households.c.plan).where(households.c.id == household_id))
+
+
+# ---------- nutrition ----------
+def cached_foods(conn: Connection, food_ids: set[str]) -> dict[str, dict]:
+    if not food_ids:
+        return {}
+    rows = conn.execute(select(food_cache).where(food_cache.c.food_id.in_(food_ids))).mappings()
+    return {r["food_id"]: {"food_id": r["food_id"], "name": r["name"], "brand": r["brand"],
+                           "servings": json.loads(r["servings"])} for r in rows}
+
+
+def cache_food(conn: Connection, food: dict) -> None:
+    exists = conn.scalar(select(food_cache.c.id).where(food_cache.c.food_id == str(food["food_id"])))
+    values = {"name": food["name"], "brand": food.get("brand"), "servings": json.dumps(food["servings"]),
+              "fetched_at": now_utc_text()}
+    if exists:
+        conn.execute(update(food_cache).where(food_cache.c.id == exists).values(**values))
+    else:
+        conn.execute(insert(food_cache).values(food_id=str(food["food_id"]), **values))
+
+
+def matches_for(conn: Connection, household_id: int, keys: set[str]) -> dict[str, dict]:
+    if not keys:
+        return {}
+    rows = conn.execute(select(ingredient_matches).where(
+        ingredient_matches.c.household_id == household_id,
+        ingredient_matches.c.ingredient_key.in_(keys),
+    )).mappings()
+    return {r["ingredient_key"]: dict(r) for r in rows}
+
+
+def save_match(conn: Connection, household_id: int, key: str, food_id: str | None, food_name: str | None,
+               skipped: bool = False, confirmed: bool = False) -> None:
+    if not key:
+        raise Invalid("That ingredient has no name to match.")
+    values = {"food_id": food_id, "food_name": food_name, "skipped": int(skipped), "confirmed": int(confirmed)}
+    existing = conn.scalar(select(ingredient_matches.c.id).where(
+        ingredient_matches.c.household_id == household_id, ingredient_matches.c.ingredient_key == key))
+    if existing:
+        conn.execute(update(ingredient_matches).where(ingredient_matches.c.id == existing).values(**values))
+    else:
+        conn.execute(insert(ingredient_matches).values(household_id=household_id, ingredient_key=key, **values))

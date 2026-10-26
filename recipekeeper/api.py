@@ -13,7 +13,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy.engine import Connection
 
-from . import auth, config, photos, repository as repo
+from . import auth, config, nutrition_service, photos, repository as repo
+from .fatsecret import FatSecretError
 from .db import get_engine
 from .ingredients import parse_lines
 from .schema_org import to_schema_org
@@ -232,6 +233,56 @@ def add_template(body: TemplateIn, user: CurrentUser = Depends(current_user),
 def delete_template(template_id: int, user: CurrentUser = Depends(current_user),
                     conn: Connection = Depends(get_conn)):
     repo.delete_template(conn, user.household_id, template_id)
+    return {"ok": True}
+
+
+# ---------- nutrition (premium) ----------
+def premium_user(user: CurrentUser = Depends(current_user), conn: Connection = Depends(get_conn)) -> CurrentUser:
+    if repo.household_plan(conn, user.household_id) != "premium":
+        raise HTTPException(402, "Nutrition facts are part of Recipe Keeper Premium.")
+    if not config.fatsecret_configured():
+        raise HTTPException(503, "Nutrition isn't set up on this server yet.")
+    return user
+
+
+@app.exception_handler(FatSecretError)
+def _fatsecret_down(request, exc):
+    return JSONResponse({"detail": "The nutrition service didn't answer. Please try again in a minute."},
+                        status_code=502)
+
+
+@app.get("/api/recipes/{recipe_id}/nutrition")
+def recipe_nutrition(recipe_id: int, user: CurrentUser = Depends(premium_user),
+                     conn: Connection = Depends(get_conn)):
+    recipe = repo.get_recipe(conn, user.household_id, recipe_id)
+    return nutrition_service.nutrition_for(conn, user.household_id, recipe)
+
+
+@app.post("/api/recipes/{recipe_id}/nutrition/match")
+def match_nutrition(recipe_id: int, user: CurrentUser = Depends(premium_user),
+                    conn: Connection = Depends(get_conn)):
+    recipe = repo.get_recipe(conn, user.household_id, recipe_id)
+    nutrition_service.auto_match(conn, user.household_id, recipe)
+    return nutrition_service.nutrition_for(conn, user.household_id, recipe)
+
+
+@app.get("/api/nutrition/search")
+def nutrition_search(q: str, user: CurrentUser = Depends(premium_user)):
+    if not q.strip():
+        return {"results": []}
+    return {"results": nutrition_service.search(q.strip()[:100])}
+
+
+class MatchIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    food_id: str | None = Field(default=None, max_length=64)
+    skip: bool = False
+
+
+@app.put("/api/nutrition/match")
+def set_match(body: MatchIn, user: CurrentUser = Depends(premium_user),
+              conn: Connection = Depends(get_conn)):
+    nutrition_service.choose(conn, user.household_id, body.name, body.food_id, body.skip)
     return {"ok": True}
 
 

@@ -117,4 +117,44 @@ export type RecipeInput = Omit<Recipe, "id" | "ingredients" | "steps" | "created
   steps: { text: string; photo_id: number | null }[];
 };
 
+export type Nutrients = {
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g: number;
+  sugar_g: number;
+  sodium_mg: number;
+};
+
+export type NutritionLine = {
+  ingredient_id: number;
+  raw_text: string;
+  name: string | null;
+  food_id: string | null;
+  food_name: string | null;
+  status: "ok" | "unmatched" | "skipped" | "no_amount" | "no_conversion";
+  nutrients: Nutrients | null;
+  serving?: string;
+};
+
+export type Nutrition = {
+  total: Nutrients;
+  per_serving: Nutrients | null;
+  servings: number | null;
+  lines: NutritionLine[];
+  counted: number;
+  needs_attention: number;
+};
+
+export type FoodResult = { food_id: string; name: string; brand: string | null; summary: string };
+
+export const nutritionApi = {
+  get: (recipeId: number) => request<Nutrition>("GET", `/api/recipes/${recipeId}/nutrition`),
+  match: (recipeId: number) => request<Nutrition>("POST", `/api/recipes/${recipeId}/nutrition/match`),
+  search: (q: string) => request<{ results: FoodResult[] }>("GET", `/api/nutrition/search?q=${encodeURIComponent(q)}`),
+  choose: (name: string, food_id: string | null, skip = false) =>
+    request("PUT", "/api/nutrition/match", { name, food_id, skip }),
+};
+
 export const photoUrl = (id: number) => `/api/photos/${id}`;

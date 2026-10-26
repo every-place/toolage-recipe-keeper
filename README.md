@@ -10,7 +10,8 @@ A digital recipe box for families. Log Grandma's handwritten cards, your own cre
 - **Cooking mode**: big text, one step at a time, the screen stays awake, built-in timers, and an ingredient checklist.
 - **Family sharing**: one recipe box per household. Family members join with a code from Settings.
 - **Your data**: export every recipe in the schema.org Recipe format, which most recipe apps can import.
-- **Plans**: each household has a `free` or `premium` plan. Paid features (FatSecret nutrition, next) will check it.
+- **Nutrition (Premium)**: calories, fat, carbs, sugar, fiber, protein and sodium per serving or for the whole recipe, from [FatSecret](https://www.fatsecret.com). Each ingredient is matched to a FatSecret food once per household and remembered; tap "Change" to pick a different food or leave one out. Cooking effects are ignored.
+- **Plans**: each household has a `free` or `premium` plan. Until billing is built, set it by hand: `python -m scripts.set_plan kristen@example.com premium`.
 
 It installs to a phone or tablet home screen from the browser (Share → Add to Home Screen on iPhone/iPad).
 
@@ -45,6 +46,12 @@ The `Dockerfile` builds one container that serves the app and the API. Any host 
 | `SECRET_KEY` | A long random string. Changing it logs everyone out |
 | `DATABASE_URL` | Your Postgres connection string |
 | `COOKIE_SECURE` | `1` (already set in the Dockerfile; the site must be on https) |
+| `FATSECRET_CLIENT_ID`, `FATSECRET_CLIENT_SECRET` | From platform.fatsecret.com → API Keys (OAuth 2.0) |
+| `FATSECRET_PROXY_URL` | Optional. See below |
+
+**FatSecret and IP addresses.** FatSecret only answers requests from IP addresses listed in its dashboard. If your host gives the app a fixed outbound IP, list that. If not, send FatSecret calls through a fixed-IP proxy and put its address in `FATSECRET_PROXY_URL` (the same setup as Vitality). Check it with `python -m scripts.check_fatsecret`.
+
+**What nutrition costs.** Showing nutrition never calls FatSecret; it uses foods already saved. Only matching a new ingredient name costs calls (one search and one food lookup), and each food is fetched once for all households.
 
 Photos are stored in the database for now, shrunk to at most 1600 px. Moving them to file storage (S3 or similar) is a later step once there are many households.
 
@@ -65,6 +72,10 @@ GitHub Actions runs both on every pull request.
 | `recipekeeper/repository.py` | Every read and write, always filtered by household |
 | `recipekeeper/ingredients.py` | Reads ingredient lines: amounts, fractions, units, notes, groups |
 | `recipekeeper/steps.py` | Built-in step templates, fill-in suggestions, timer detection |
+| `recipekeeper/fatsecret.py` | FatSecret client (same as Vitality's) |
+| `recipekeeper/nutrition.py` | Converts ingredient amounts into FatSecret servings and adds up the totals |
+| `recipekeeper/nutrition_service.py` | Matching ingredients to foods, with caching so each food is fetched once |
+| `scripts/` | `set_plan` (free/premium by hand) and `check_fatsecret` (live API check) |
 | `recipekeeper/schema_org.py` | Export in the schema.org Recipe format |
 | `recipekeeper/photos.py` | Photo uploads: fix rotation, shrink, save as JPEG |
 | `recipekeeper/auth.py` | Passwords (scrypt) and login cookies |

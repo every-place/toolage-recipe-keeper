@@ -121,3 +121,28 @@ step_templates = Table(
     Column("text", Text, nullable=False),
     UniqueConstraint("household_id", "text", name="uq_templates_household_text"),
 )
+
+# ---------- Nutrition (premium) ----------
+# FatSecret foods we've already fetched, shared by all households so each
+# food costs one API call, ever. `servings` is the client's JSON list.
+food_cache = Table(
+    "food_cache", metadata, _id(),
+    Column("food_id", String(64), nullable=False, unique=True),
+    Column("name", Text, nullable=False),
+    Column("brand", Text),
+    Column("servings", Text, nullable=False),  # JSON
+    Column("fetched_at", String(20), nullable=False, default=now_utc_text),
+)
+
+# Which FatSecret food a household means by an ingredient name ("flour" ->
+# all-purpose flour). Confirmed once, reused in every recipe.
+# food_id NULL with skipped=1 means "don't count this one" (water, love).
+ingredient_matches = Table(
+    "ingredient_matches", metadata, _id(), _household_fk(),
+    Column("ingredient_key", String(200), nullable=False),
+    Column("food_id", String(64)),
+    Column("food_name", Text),
+    Column("skipped", Integer, nullable=False, default=0, server_default="0"),
+    Column("confirmed", Integer, nullable=False, default=0, server_default="0"),  # 1 = chosen by a person
+    UniqueConstraint("household_id", "ingredient_key", name="uq_matches_household_key"),
+)
