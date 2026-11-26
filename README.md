@@ -54,12 +54,29 @@ Set these environment variables on the host:
 | `COOKIE_SECURE` | `1` (already set in the Dockerfile; the site must be on https) |
 | `FATSECRET_CLIENT_ID`, `FATSECRET_CLIENT_SECRET` | From platform.fatsecret.com → API Keys (OAuth 2.0) |
 | `FATSECRET_PROXY_URL` | Optional. See below |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | Cloudflare R2, where photos are kept. See "Photos in Cloudflare R2" |
 
 **FatSecret and IP addresses.** FatSecret only answers requests from IP addresses listed in its dashboard. If your host gives the app a fixed outbound IP, list that. If not, send FatSecret calls through a fixed-IP proxy and put its address in `FATSECRET_PROXY_URL` (the same setup as Vitality). Check it with `python -m scripts.check_fatsecret`.
 
 **What nutrition costs.** Showing nutrition never calls FatSecret; it uses foods already saved. Only matching a new ingredient name costs calls (one search and one food lookup), and each food is fetched once for all households.
 
-Photos are stored in the database for now, shrunk to at most 1600 px. Moving them to file storage (S3 or similar) is a later step once there are many households.
+### Photos in Cloudflare R2
+
+Photos are shrunk to at most 1600 px (about 200 to 400 KB each). Online they're kept in [Cloudflare R2](https://developers.cloudflare.com/r2/), file storage that is free up to 10 GB, which is tens of thousands of photos. Without the R2 settings (for example on your computer) they stay in the database.
+
+**What it costs.** R2's free allowance each month is 10 GB stored, 1 million uploads and 10 million downloads, and downloading is never charged by size. Past that it's $0.015 per GB a month ([current prices](https://developers.cloudflare.com/r2/pricing/)). Cloudflare asks for a card or PayPal to turn R2 on even if you stay inside the free allowance. The free allowance only covers the **Standard** storage class, so keep the bucket on Standard.
+
+**Set it up (once):**
+
+1. Sign up at [dash.cloudflare.com](https://dash.cloudflare.com) (free). In the menu open **R2 Object Storage** and turn it on, adding a payment method when asked.
+2. **Create bucket**. Name it `recipe-keeper-photos`, leave the location on Automatic and the storage class on **Standard**. Leave public access off: photos are only shown to the family they belong to, through the app.
+3. Back on the R2 page, copy your **Account ID**.
+4. Open **Manage API tokens** (on the R2 page) → **Create API token**. Choose **Object Read & Write**, limit it to the `recipe-keeper-photos` bucket, and create it. Copy the **Access Key ID** and **Secret Access Key** now; the secret is only shown once.
+5. In Render, open the recipe-keeper service → **Environment** and add `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` (`R2_BUCKET` is already `recipe-keeper-photos`). Save; Render redeploys.
+
+Photos already in the database are moved into R2 by themselves the next time the server starts. Add a photo to a recipe and check it appears in the bucket's **Objects** list to confirm it's working.
+
+Keys never go in this repo, in chat, or in a `.env` that is committed; only in the host's settings.
 
 ## Tests
 
@@ -82,9 +99,10 @@ GitHub Actions runs both on every pull request.
 | `recipekeeper/nutrition.py` | Converts ingredient amounts into FatSecret servings and adds up the totals |
 | `recipekeeper/nutrition_service.py` | Matching ingredients to foods, with caching so each food is fetched once |
 | `recipekeeper/shopping.py` | Combines a menu's ingredients into one list, by aisle |
-| `scripts/` | `set_plan` (free/premium by hand) and `check_fatsecret` (live API check) |
+| `scripts/` | `set_plan` (free/premium by hand), `check_fatsecret` (live API check), `move_photos_to_r2` (runs at start-up) |
 | `recipekeeper/schema_org.py` | Export in the schema.org Recipe format |
 | `recipekeeper/photos.py` | Photo uploads: fix rotation, shrink, save as JPEG |
+| `recipekeeper/storage.py` | Where photo files live: Cloudflare R2, or the database without R2 settings |
 | `recipekeeper/auth.py` | Passwords (scrypt) and login cookies |
 | `recipekeeper/api.py` | The web server: JSON API under `/api`, and the built app |
 | `web/src/pages/` | The screens: box, recipe card, editor, cooking mode, settings, sign in |

@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy.engine import Connection
 
-from . import auth, config, nutrition_service, photos, repository as repo
+from . import auth, config, nutrition_service, photos, repository as repo, storage
 from .fatsecret import FatSecretError
 from .db import get_engine
 from .ingredients import parse_lines
@@ -400,14 +400,32 @@ async def upload_photo(file: UploadFile = File(...), user: CurrentUser = Depends
         jpeg, w, h = photos.prepare(data)
     except photos.PhotoError as e:
         raise HTTPException(400, str(e))
-    return {"id": repo.add_photo(conn, user.household_id, jpeg, w, h), "width": w, "height": h}
+    key = None
+    store = storage.backend()
+    if store is not None:
+        key = storage.new_key(user.household_id)
+        try:
+            store.put(key, jpeg, "image/jpeg")
+        except storage.StorageError:
+            raise HTTPException(503, "The photo couldn't be saved just now. Please try again.")
+    return {"id": repo.add_photo(conn, user.household_id, jpeg, w, h, storage_key=key),
+            "width": w, "height": h}
 
 
 @app.get("/api/photos/{photo_id}")
 def get_photo(photo_id: int, user: CurrentUser = Depends(current_user),
               conn: Connection = Depends(get_conn)):
     row = repo.get_photo(conn, user.household_id, photo_id)
-    return Response(row["data"], media_type=row["content_type"],
+    data = row["data"]
+    if row["storage_key"]:
+        store = storage.backend()
+        if store is None:
+            raise HTTPException(503, "Photo storage isn't set up on this server.")
+        try:
+            data = store.get(row["storage_key"])
+        except storage.StorageError:
+            raise HTTPException(503, "The photo couldn't be loaded just now.")
+    return Response(data, media_type=row["content_type"],
                     headers={"Cache-Control": "private, max-age=31536000, immutable"})
 
 
