@@ -1,7 +1,7 @@
 """Database connection. SQLite on your computer; Postgres when DATABASE_URL is set."""
 from __future__ import annotations
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 
 from . import config
@@ -41,5 +41,14 @@ def get_engine(url: str | None = None) -> Engine:
                 dbapi_conn.execute("PRAGMA foreign_keys=ON")  # SQLite has these OFF by default
 
         metadata.create_all(eng)
+        _upgrade(eng)
         _engines[url] = eng
     return _engines[url]
+
+
+def _upgrade(eng: Engine) -> None:
+    """Add columns that newer versions need to a database made by an older version."""
+    photo_cols = {c["name"] for c in inspect(eng).get_columns("photos")}
+    if "storage_key" not in photo_cols:
+        with eng.begin() as conn:
+            conn.execute(text("ALTER TABLE photos ADD COLUMN storage_key VARCHAR(200)"))

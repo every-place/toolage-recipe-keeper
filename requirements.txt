@@ -7,3 +7,4 @@ itsdangerous>=2.2
 python-multipart>=0.0.9
 Pillow>=10.0
 requests>=2.31
+boto3>=1.34

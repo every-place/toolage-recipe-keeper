@@ -110,7 +110,8 @@ photos = Table(
     Column("content_type", String(40), nullable=False),
     Column("width", Integer),
     Column("height", Integer),
-    Column("data", LargeBinary, nullable=False),
+    Column("data", LargeBinary, nullable=False),  # empty when the file is in R2
+    Column("storage_key", String(200)),  # where the file is in R2, if it's there
     Column("created_at", String(20), nullable=False, default=now_utc_text),
 )
 

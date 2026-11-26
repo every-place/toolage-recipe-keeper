@@ -90,16 +90,19 @@ def household(conn: Connection, household_id: int) -> dict:
 
 
 # ---------- photos ----------
-def add_photo(conn: Connection, household_id: int, data: bytes, width: int, height: int) -> int:
+def add_photo(conn: Connection, household_id: int, data: bytes, width: int, height: int,
+              storage_key: str | None = None) -> int:
+    """With storage_key, the file itself is in R2 and only its details are kept here."""
     return conn.execute(
         insert(photos).values(household_id=household_id, content_type="image/jpeg",
-                              width=width, height=height, data=data)
+                              width=width, height=height,
+                              data=b"" if storage_key else data, storage_key=storage_key)
     ).inserted_primary_key[0]
 
 
 def get_photo(conn: Connection, household_id: int, photo_id: int):
     row = conn.execute(
-        select(photos.c.data, photos.c.content_type)
+        select(photos.c.data, photos.c.content_type, photos.c.storage_key)
         .where(photos.c.id == photo_id, photos.c.household_id == household_id)
     ).mappings().first()
     if row is None:

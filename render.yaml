@@ -21,3 +21,12 @@ services:
         sync: false
       - key: FATSECRET_PROXY_URL # same value as Vitality uses
         sync: false
+      # Cloudflare R2, where recipe photos are kept (README: "Photos in Cloudflare R2")
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        value: recipe-keeper-photos
